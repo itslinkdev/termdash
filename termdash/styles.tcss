@@ -1,0 +1,104 @@
+/* Palette and spacing live here; Python only selects the theme class. */
+$dark-ground: #151719;
+$dark-surface: #1d2023;
+$dark-ink: #edf0f2;
+$dark-muted: #a5adb5;
+$dark-line: #626c75;
+$dark-data: #8ccbd1;
+$light-ground: #e8ebed;
+$light-surface: #ffffff;
+$light-ink: #20282e;
+$light-muted: #505e69;
+$light-line: #74828c;
+$light-data: #146571;
+$retro-ground: #000000;
+$retro-surface: #020a02;
+$retro-ink: #98ff98;
+$retro-muted: #63cf63;
+$retro-line: #43aa43;
+$retro-data: #98ff98;
+$inset: 1;
+$gutter: 1;
+
+Screen {
+    background: $dark-ground;
+    color: $dark-ink;
+    overflow: hidden;
+}
+Screen.light { background: $light-ground; color: $light-ink; }
+Screen.retro { background: $retro-ground; color: $retro-ink; }
+
+#header {
+    height: 3;
+    padding: 1 $inset 0 $inset;
+}
+#title { width: 1fr; text-style: bold; }
+#mode { width: 22; content-align: right top; padding-right: 2; }
+#clock { width: 8; content-align: right top; }
+
+#panels {
+    height: 1fr;
+    grid-size: 2 2;
+    grid-columns: 1fr 1fr;
+    grid-rows: 1fr 1fr;
+    grid-gutter: $gutter;
+    padding: 0 $inset;
+}
+.panel, #help-box {
+    height: 1fr;
+    padding: 0 $inset;
+    background: $dark-surface;
+    border: round $dark-line;
+    border-title-color: $dark-ink;
+    border-title-style: bold;
+}
+.light .panel, .light #help-box {
+    background: $light-surface;
+    border: round $light-line;
+    border-title-color: $light-ink;
+}
+.retro .panel, .retro #help-box {
+    background: $retro-surface;
+    border: round $retro-line;
+    border-title-color: $retro-ink;
+}
+Static { height: 1; }
+.metric { text-style: bold; }
+.muted { color: $dark-muted; }
+.light .muted { color: $light-muted; }
+.retro .muted { color: $retro-muted; }
+#weather-summary { height: 1fr; min-height: 4; align-vertical: middle; }
+.io-metric { height: 1fr; min-height: 2; align-vertical: middle; }
+
+Sparkline { height: 1fr; min-height: 1; }
+Sparkline > .sparkline--min-color, Sparkline > .sparkline--max-color {
+    color: $dark-data;
+}
+.light Sparkline > .sparkline--min-color, .light Sparkline > .sparkline--max-color {
+    color: $light-data;
+}
+.retro Sparkline > .sparkline--min-color, .retro Sparkline > .sparkline--max-color {
+    color: $retro-data;
+}
+
+#git-files { height: 1fr; min-height: 3; }
+ProgressBar, Bar { width: 1fr; height: 1; }
+Bar > .bar--bar, Bar > .bar--complete {
+    color: $dark-data;
+    background: $dark-ground;
+}
+.light Bar > .bar--bar, .light Bar > .bar--complete {
+    color: $light-data;
+    background: $light-ground;
+}
+.retro Bar > .bar--bar, .retro Bar > .bar--complete {
+    color: $retro-data;
+    background: $retro-ground;
+}
+#footer { height: 2; padding: 1 $inset 0 $inset; }
+.key-hint { width: auto; margin-right: 3; color: $dark-muted; }
+.light .key-hint { color: $light-muted; }
+.retro .key-hint { color: $retro-muted; }
+
+HelpScreen { align: center middle; }
+#help-box { width: 48; max-width: 100%; height: auto; padding: $inset; }
