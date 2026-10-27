@@ -18,7 +18,7 @@ def positive_seconds(value: str) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="termdash local system and Git dashboard")
+    parser = argparse.ArgumentParser(description="termdash system, weather, and Git dashboard")
     parser.add_argument("--demo", action="store_true", help="use simulated data")
     parser.add_argument("--config", type=Path, help="TOML file (default: user config directory)")
     parser.add_argument("--repo", type=Path, help="override configured Git repository")
@@ -26,6 +26,8 @@ def main() -> None:
                         metavar="SECONDS", help="override system polling delay")
     parser.add_argument("--git-interval", type=positive_seconds,
                         metavar="SECONDS", help="override Git polling delay")
+    parser.add_argument("--weather-interval", type=positive_seconds,
+                        metavar="SECONDS", help="override weather polling delay (15-minute cache)")
     parser.add_argument("--demo-interval", type=positive_seconds,
                         metavar="SECONDS", help="override demo polling delay")
     args = parser.parse_args()
@@ -38,7 +40,8 @@ def main() -> None:
         system_interval=args.system_interval or config.system_interval,
         git_interval=args.git_interval or config.git_interval,
         demo_interval=args.demo_interval or config.demo_interval,
-        theme=config.theme,
+        weather_interval=args.weather_interval or config.weather_interval,
+        theme=config.theme, location=config.location, units=config.units,
     ).run()
 
 

@@ -2,11 +2,12 @@ import asyncio
 from threading import Event, get_ident
 import unittest
 
+import pytest
 from textual.widgets import Sparkline, Static
 from textual.events import Key
 
 from termdash.app import HelpScreen, TermdashApp
-from termdash.data import GitData, IOData, SystemData, SystemSnapshot
+from termdash.data import GitData, IOData, SystemData, SystemSnapshot, WeatherData
 
 
 async def wait_until(predicate, timeout=3):
@@ -60,7 +61,77 @@ class FakeGit:
             self.active -= 1
 
 
+class FakeWeather:
+    def __init__(self):
+        self.calls = self.active = self.max_active = 0
+        self.stale = self.fail = False
+        self.gate = asyncio.Event()
+        self.gate.set()
+
+    async def fetch(self):
+        self.calls += 1
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await self.gate.wait()
+            if self.fail:
+                raise OSError("Weather unavailable")
+            return WeatherData(20, "Clear sky", 50, 10, "Test [city]", stale=self.stale,
+                               error="offline" if self.stale else "")
+        finally:
+            self.active -= 1
+
+
+@pytest.fixture(autouse=True)
+def offline_weather(monkeypatch):
+    monkeypatch.setattr("termdash.app.WeatherProvider", lambda location: FakeWeather())
+
+
 class PollingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_weather_stale_error_units_and_recovery(self):
+        weather = FakeWeather()
+        app = TermdashApp(system_provider=FakeSystem(), git_provider=FakeGit(),
+                          weather_provider=weather, weather_interval=60,
+                          theme="light", units="imperial")
+        async with app.run_test(size=(80, 24)):
+            await wait_until(lambda: app.polls["weather"].last_success is not None)
+            self.assertTrue(app.screen.has_class("light"))
+            self.assertEqual(str(app.panels["weather"].border_subtitle), "[LIVE]")
+            self.assertEqual(str(app.query_one("#weather-temperature", Static).content), "68.0 °F")
+            self.assertEqual(str(app.query_one("#weather-wind", Static).content), "Wind       6 mph")
+            self.assertEqual(str(app.query_one("#weather-location", Static).content), "Test [city]")
+            weather.stale = True
+            app.action_refresh_data()
+            await wait_until(lambda: str(app.panels["weather"].border_subtitle) == "[STALE]")
+            self.assertIn("offline", str(app.panels["weather"].tooltip))
+            self.assertEqual(app.panels["weather"].data.temperature_c, 20)
+            weather.stale = False
+            app.action_refresh_data()
+            await wait_until(lambda: str(app.panels["weather"].border_subtitle) == "[LIVE]")
+            weather.fail = True
+            previous = app.panels["weather"].data
+            app.action_refresh_data()
+            await wait_until(lambda: str(app.panels["weather"].border_subtitle) == "[ERROR]")
+            self.assertEqual(app.panels["weather"].data, previous)
+
+    async def test_pending_weather_keeps_ui_responsive_and_cancels_on_quit(self):
+        weather, system = FakeWeather(), FakeSystem()
+        weather.gate.clear()
+        app = TermdashApp(system_provider=system, git_provider=FakeGit(),
+                          weather_provider=weather, system_interval=0.05, weather_interval=60)
+        async with app.run_test(size=(80, 24)):
+            await wait_until(lambda: weather.active == 1 and system.calls > 1)
+            self.assertEqual(str(app.query_one("#weather-temperature", Static).content), "--")
+            app.action_refresh_data()
+            app.action_refresh_data()
+            app.post_message(Key("t", "t"))
+            await wait_until(lambda: app.theme_name == "light")
+            self.assertEqual(weather.max_active, 1)
+            app.post_message(Key("q", "q"))
+            await wait_until(lambda: not app.is_running)
+        await wait_until(lambda: weather.active == 0)
+        self.assertTrue(app.polls["weather"].worker.is_cancelled)
+
     async def test_slow_git_keeps_ui_and_other_providers_responsive(self):
         system, git = FakeSystem(), FakeGit()
         app = TermdashApp(system_provider=system, git_provider=git,
@@ -123,7 +194,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
             git.fail = system.fail = False
             await wait_until(lambda: not app.polls["git"].error and not app.polls["system"].error)
             self.assertEqual(str(app.panels["git"].border_subtitle), "[LIVE]")
-            self.assertEqual(str(app.panels["weather"].border_subtitle), "[DEMO]")
+            self.assertEqual(str(app.panels["weather"].border_subtitle), "[LIVE]")
             self.assertEqual(str(app.panels["git"].query_one("#git-commit", Static).content),
                              "Keep [brackets] literal")
 

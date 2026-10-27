@@ -21,7 +21,8 @@ def test_cli_defaults_to_live_cwd(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.argv", ["termdash"])
     cli.main()
     constructor.assert_called_once_with(None, repo=tmp_path, system_interval=2,
-                                        git_interval=5, demo_interval=2, theme="dark")
+                                        git_interval=5, demo_interval=2, theme="dark",
+                                        weather_interval=900, location="London", units="metric")
     app.run.assert_called_once_with()
 
 
@@ -35,12 +36,14 @@ def test_cli_demo_repo_and_provider_intervals(monkeypatch):
     args, kwargs = constructor.call_args
     assert isinstance(args[0], DemoProvider)
     assert kwargs == dict(repo=Path("some repo"), system_interval=1.5,
-                          git_interval=4.0, demo_interval=0.25, theme="dark")
+                          git_interval=4.0, demo_interval=0.25, theme="dark",
+                          weather_interval=900, location="London", units="metric")
 
 
 def test_cli_config_and_override(monkeypatch, tmp_path):
     path = tmp_path / "custom.toml"
-    path.write_text('theme = "retro"\n[refresh]\nsystem = 3\ngit = 8\ndemo = 4\n'
+    path.write_text('theme = "retro"\nlocation = "Rome"\nunits = "imperial"\n'
+                    '[refresh]\nsystem = 3\ngit = 8\ndemo = 4\nweather = 60\n'
                     '[git]\nrepo = "somewhere"\n', encoding="utf-8")
     constructor = Mock()
     monkeypatch.setattr(cli, "TermdashApp", constructor)
@@ -48,7 +51,7 @@ def test_cli_config_and_override(monkeypatch, tmp_path):
     cli.main()
     assert constructor.call_args.kwargs == dict(
         repo=Path("somewhere").resolve(), system_interval=3, git_interval=1,
-        demo_interval=4, theme="retro",
+        demo_interval=4, theme="retro", weather_interval=60, location="Rome", units="imperial",
     )
 
 
@@ -72,7 +75,7 @@ def test_cli_rejects_invalid_intervals(monkeypatch, value):
     assert error.value.code == 2
 
 
-@pytest.mark.parametrize("name", ["system_interval", "git_interval", "demo_interval"])
+@pytest.mark.parametrize("name", ["system_interval", "git_interval", "demo_interval", "weather_interval"])
 def test_app_also_validates_intervals(name):
     with pytest.raises(ValueError, match="positive, finite"):
         TermdashApp(**{name: float("nan")})

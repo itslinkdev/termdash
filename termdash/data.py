@@ -14,11 +14,14 @@ class SystemData:
 
 @dataclass(frozen=True)
 class WeatherData:
-    temperature_c: float = 19.0
-    condition: str = "Partly cloudy"
-    humidity_percent: int = 62
-    wind_kmh: float = 11.0
-    location: str = "Demo city"
+    temperature_c: float | None = None
+    condition: str = "Waiting for weather"
+    humidity_percent: int | None = None
+    wind_kmh: float | None = None
+    location: str = ""
+    source: str = "Open-Meteo"
+    stale: bool = False
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,7 @@ class DemoProvider:
             system=SystemData(self.cpu, self.memory, memory_total_gib=16.0),
             weather=WeatherData(
                 temperature_c=self.temperature,
+                condition="Partly cloudy", location="Demo city", source="Simulated forecast",
                 humidity_percent=self.random.randint(58, 65),
                 wind_kmh=self.random.uniform(8, 14),
             ),

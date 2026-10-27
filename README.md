@@ -1,13 +1,13 @@
 # termdash
 
 A terminal dashboard for Python 3.11+ and Textual. Live mode reads local CPU,
-memory, disk, network and Git data. `--demo` keeps all readings simulated.
-**Weather is always simulated**, including in live mode. No provider makes
-network requests or changes your repository.
+memory, disk, network and Git data, plus current weather from Open-Meteo.
+`--demo` keeps all readings simulated and makes no weather requests.
+Providers never change your Git repository. No weather API key is needed.
 
 GIF preview: TODO (record a short terminal session).
 
-## Run
+## Install and run
 
 From this folder, in PowerShell:
 
@@ -16,6 +16,18 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 .\.venv\Scripts\termdash.exe
 ```
+
+On Linux/macOS:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+termdash
+```
+
+For a regular install from this checkout, use `python -m pip install .` instead.
+Python 3.11+ is required for the standard library's `tomllib`.
 
 Git must be installed and available on PATH. Choose a repository and polling
 delays (positive, finite seconds):
@@ -28,9 +40,10 @@ delays (positive, finite seconds):
 
 CLI flags override the TOML settings. `git.repo` defaults to the current working
 directory. Defaults are 2 seconds for
-system data, 5 seconds for Git, and 2 seconds for demo/weather data. Each delay
+system data, 5 seconds for Git, 900 seconds for weather, and 2 seconds for demo data. Each delay
 starts after that provider's fetch finishes. Pressing `r` wakes waiting workers;
-an in-flight fetch finishes before the next fetch starts.
+an in-flight fetch finishes before the next fetch starts. Weather refreshes,
+including `r` and `--weather-interval`, respect the 15-minute cache TTL.
 
 The header shows the local clock and LIVE or DEMO mode. The 2×2 grid fits 80×24
 terminal cells and expands to 200×60. The terminal controls the font and must
@@ -68,19 +81,29 @@ demo = 2
 repo = "."
 ```
 
-`location` is a city name of at least two characters. `units` accepts `metric`
-or `imperial`; both weather settings are reserved for the live weather provider.
-`theme` selects `dark`, `light`, or `retro` at startup. The `t` key changes the
-current session only. Every refresh value must be positive, finite seconds.
-`git.repo` accepts a path; `~` expands to your home and relative paths use the
-launch directory. Use forward slashes (`C:/src/project`) or TOML literal strings
-(`'C:\src\project'`) for Windows paths. Missing keys use the defaults above.
+| Setting | Default | Accepted values / meaning |
+| --- | --- | --- |
+| `location` | `"London"` | City name, at least two characters; first geocoding match wins |
+| `units` | `"metric"` | Weather display: `metric` (°C, km/h) or `imperial` (°F, mph) |
+| `theme` | `"dark"` | Initial palette: `dark`, `light`, or `retro` |
+| `refresh.system` | `2` | System polling delay in seconds |
+| `refresh.git` | `5` | Git polling delay in seconds |
+| `refresh.weather` | `900` | Weather polling delay; cached answers have a 900-second TTL |
+| `refresh.demo` | `2` | Demo polling delay in seconds |
+| `git.repo` | `"."` | Git path; relative to the launch directory, `~` expands to home |
+
+Every refresh value must be positive and finite. Missing keys use the defaults
+above. The `t` key changes the current session only. Settings are read at startup;
+restart after editing. Units apply to weather; system I/O keeps its existing units.
+Use forward slashes (`C:/src/project`) or TOML literal strings
+(`'C:\src\project'`) for Windows paths. A missing Git directory shows an empty state.
 
 ## Providers and panel states
 
-`Provider` is a `typing.Protocol` with `fetch()` returning an immutable
-dataclass. Widgets only consume data; fetching runs in independent Textual
-thread workers. Results reach the UI through thread-safe messages. Each
+`Provider` and `AsyncProvider` are `typing.Protocol` contracts with `fetch()`
+returning an immutable dataclass. Widgets only consume data. System, Git, and
+demo fetching runs in independent Textual thread workers; weather uses an async
+worker with `httpx.AsyncClient`. Results reach the UI through messages. Each
 provider has one worker, so refreshes cannot overlap that provider's fetches.
 
 - **SystemProvider** (`SystemSnapshot`): psutil per-core CPU measured over a
@@ -101,20 +124,58 @@ provider has one worker, so refreshes cannot overlap that provider's fetches.
 - **DemoProvider** (`Snapshot`): bounded simulated values, including weather.
   Keeps the original `snapshot()` API as an alias for `fetch()`. In demo mode,
   CPU/memory charts show 48 history samples and network bars use a 100 Mb/s scale.
+- **WeatherProvider** (`WeatherData`): resolves the configured city with the
+  [Open-Meteo geocoding API](https://open-meteo.com/en/docs/geocoding-api), then
+  requests temperature, relative humidity, wind speed, and a condition code from
+  the [forecast API](https://open-meteo.com/en/docs). The panel shows current
+  model conditions, not a multi-day outlook. HTTP requests use a five-second
+  timeout per operation. A failed geocoding/forecast sequence gets two retries,
+  with delays of 0.5 and 1 second. Invalid or missing response values count as failures.
+
+Weather's last good answer is written atomically as JSON in the user cache directory:
+`%LOCALAPPDATA%/termdash` on Windows, `$XDG_CACHE_HOME/termdash` (default
+`~/.cache/termdash`) on Linux, or `~/Library/Caches/termdash` on macOS. Cache files
+are separated by city. Entries younger than 15 minutes are reused across launches.
+After expiry, failed requests show the cached answer with a `STALE` badge and the
+failure in its tooltip; stale entries have no maximum fallback age. A failure never
+replaces the last good file. Corrupt or future-dated cache entries are ignored.
+If the cache directory is unwritable, live readings still work and the last good
+answer is retained in memory for that session.
 
 Panel border badges show `LOADING`, `LIVE`, `DEMO`, `STALE` or `ERROR`. A provider
 is stale after no successful sample for twice its interval (at least 0.5 seconds).
+Weather cached after a failed request is always `STALE`. Without a usable cache,
+weather shows `ERROR` and empty readings until recovery.
 Slow and failed providers retain the last successful data while the other workers
 and keyboard actions continue. Errors retry automatically after the configured
 delay. Hover a panel for the error and refresh details; `r` retries sooner.
 
 ## Structure
 
+```text
+user config.toml -- tomllib + validation -- CLI overrides
+                                              |
+                                              v
+                                        TermdashApp
+                                              |
+   +----------------------+-------------------+-------------------+
+   |                      |                   |                   |
+SystemProvider        GitProvider       WeatherProvider      DemoProvider
+   | psutil               | git               | async httpx       | --demo
+   |                      |              geocoding -> forecast    |
+   |                      |                   | <-> JSON cache    |
+   +----------------------+-------------------+-------------------+
+                                              |
+                                   immutable data + messages
+                                              |
+                              reactive panels + status badges
+```
+
 - `termdash/app.py`: composition, provider workers, result messages, badges, help.
 - `termdash/__main__.py`: CLI options and interval validation.
 - `termdash/config.py`, `paths.py`: validated TOML and per-user directories.
 - `termdash/data.py`: immutable panel dataclasses and demo provider.
-- `termdash/providers/`: protocol, psutil provider and Git provider.
+- `termdash/providers/`: protocols, system, Git and async weather providers.
 - `termdash/panels/`: reactive widgets accepting fresh matching data objects.
 - `tests/`: pytest provider/CLI tests and Textual Pilot checks.
 - `docs/termdash-retro.svg`: example demo screenshot at 80×24.
@@ -136,7 +197,10 @@ Build a wheel and run checks:
 git diff --check
 ```
 
-Tests use fake psutil readings and `tmp_path` Git repositories for clean, dirty,
+Tests block real HTTP and use `httpx.MockTransport` only inside tests. They check
+weather requests, timeout settings, retry backoff, cache TTL, stale fallback,
+corrupt cache, offline startup, and recovery. Config tests use temporary files.
+Tests also use fake psutil readings and `tmp_path` Git repositories for clean, dirty,
 ahead/behind, detached, unborn, renamed and conflicted states. Pilot checks cover
 themes, help, keyboard refresh/quit, layout, worker thread identity, independent
 intervals, blocked providers, stale/error badges, retained data and recovery.
@@ -153,7 +217,9 @@ TODO
 
 ## Limits
 
-Weather remains demo data. No theme persistence or layouts below 80×24. Long
+City selection uses the first geocoding match; ambiguous city names can select
+the wrong place. Weather requires connectivity for an initial successful fetch,
+and stale fallback can be arbitrarily old. No layouts below 80×24. Long
 Git subjects are truncated to fit (hover for the full subject); the file list is
 a preview, while counts include every file. CPU is a short-window measurement,
 and network rates aggregate interfaces rather than representing one adapter.
@@ -162,4 +228,4 @@ samples. Python cannot forcibly cancel an in-flight thread; quit cancels polling
 and wakes idle workers, but process exit may wait for an active system call to
 return (Git commands are bounded by their timeout).
 
-MIT licensed. Copyright holder: TODO.
+MIT licensed; see [LICENSE](LICENSE). Copyright holder: TODO.

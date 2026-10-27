@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from dataclasses import dataclass, field
 from math import isfinite
@@ -16,10 +17,11 @@ from textual.message import Message
 from textual.worker import Worker, get_current_worker
 from textual.widgets import Static
 
-from termdash.data import DemoProvider, GitData, Snapshot, SystemSnapshot
-from termdash.providers import Provider
+from termdash.data import GitData, Snapshot, SystemSnapshot, WeatherData
+from termdash.providers import AsyncProvider, Provider
 from termdash.providers.git import GitProvider
 from termdash.providers.system import SystemProvider
+from termdash.providers.weather import WeatherProvider
 from termdash.panels.git import GitPanel
 from termdash.panels.io import IOPanel
 from termdash.panels.system import SystemPanel
@@ -28,18 +30,19 @@ from termdash.panels.weather import WeatherPanel
 
 @dataclass
 class PollState:
-    provider: Provider[Snapshot | SystemSnapshot | GitData]
+    provider: Provider[Snapshot | SystemSnapshot | GitData] | AsyncProvider[WeatherData]
     interval: float
     panels: tuple[str, ...]
-    wake: Event = field(default_factory=Event)
+    wake: Event | asyncio.Event = field(default_factory=Event)
     started_at: float = 0.0
     last_success: float | None = None
     error: str = ""
+    stale: bool = False
     worker: Worker | None = None
 
 
 class ProviderResult(Message):
-    def __init__(self, name: str, sample: Snapshot | SystemSnapshot | GitData | None = None,
+    def __init__(self, name: str, sample: Snapshot | SystemSnapshot | GitData | WeatherData | None = None,
                  error: str = "") -> None:
         super().__init__()
         self.name, self.sample, self.error = name, sample, error
@@ -57,7 +60,7 @@ class HelpScreen(ModalScreen):
             yield Static("r   Request provider refresh")
             yield Static("?   Open or close this help")
             yield Static("Providers refresh independently.")
-            yield Static("Weather is always simulated.", classes="muted")
+            yield Static("Weather: Open-Meteo; simulated in demo.", classes="muted")
             yield Static("Esc or Enter to return", classes="muted")
 
     def on_mount(self) -> None:
@@ -80,21 +83,28 @@ class TermdashApp(App):
         repo: str | Path | None = None,
         system_provider: Provider[SystemSnapshot] | None = None,
         git_provider: Provider[GitData] | None = None,
+        weather_provider: AsyncProvider[WeatherData] | None = None,
         system_interval: float = 2, git_interval: float = 5, demo_interval: float = 2,
-        theme: str = "dark",
+        weather_interval: float = 900,
+        theme: str = "dark", location: str = "London", units: str = "metric",
     ) -> None:
         super().__init__()
-        for interval in (system_interval, git_interval, demo_interval):
+        for interval in (system_interval, git_interval, demo_interval, weather_interval):
             if not isfinite(interval) or interval <= 0:
                 raise ValueError("Provider intervals must be positive, finite seconds")
         self.demo_mode = provider is not None
-        self.polls = {
-            "demo": PollState(
-                provider if provider is not None else DemoProvider(), demo_interval,
-                ("system", "weather", "git", "io") if self.demo_mode else ("weather",),
-            ),
-        }
-        if not self.demo_mode:
+        if units not in ("metric", "imperial"):
+            raise ValueError("Weather units must be metric or imperial")
+        self.units = units
+        self.polls = {}
+        if self.demo_mode:
+            self.polls["demo"] = PollState(provider, demo_interval,
+                                           ("system", "weather", "git", "io"))
+        else:
+            self.polls["weather"] = PollState(
+                weather_provider if weather_provider is not None else WeatherProvider(location),
+                weather_interval, ("weather",), wake=asyncio.Event(),
+            )
             self.polls["system"] = PollState(
                 system_provider if system_provider is not None else SystemProvider(),
                 system_interval, ("system", "io"),
@@ -116,7 +126,7 @@ class TermdashApp(App):
             yield Static(id="clock")
         with Grid(id="panels"):
             yield SystemPanel(id="system", classes="panel")
-            yield WeatherPanel(id="weather", classes="panel")
+            yield WeatherPanel(units=self.units, id="weather", classes="panel")
             yield GitPanel(id="git", classes="panel")
             yield IOPanel(id="io", classes="panel")
         with Horizontal(id="footer"):
@@ -133,7 +143,8 @@ class TermdashApp(App):
         self.update_clock()
         for name, poll in self.polls.items():
             poll.started_at = monotonic()
-            poll.worker = self.poll_provider(name, poll)
+            poll.worker = (self.poll_weather(name, poll) if name == "weather"
+                           else self.poll_provider(name, poll))
         self.update_badges()
         self.set_interval(1, self.update_clock)
         self.set_interval(0.2, self.update_badges)
@@ -167,12 +178,27 @@ class TermdashApp(App):
             poll.wake.wait(poll.interval)
             poll.wake.clear()
 
+    @work(exit_on_error=False)
+    async def poll_weather(self, name: str, poll: PollState) -> None:
+        while True:
+            try:
+                result = ProviderResult(name, sample=await poll.provider.fetch())
+            except Exception as exc:
+                result = ProviderResult(name, error=f"{type(exc).__name__}: {exc}")
+            self.post_message(result)
+            try:
+                await asyncio.wait_for(poll.wake.wait(), timeout=poll.interval)
+            except TimeoutError:
+                pass
+            poll.wake.clear()
+
     def on_provider_result(self, message: ProviderResult) -> None:
         # Results already queued at shutdown can outlive the panel's children.
         if not self.is_running:
             return
         poll = self.polls[message.name]
         poll.error = message.error
+        poll.stale = False
         if not message.error:
             sample = message.sample
             if isinstance(sample, Snapshot):
@@ -186,6 +212,10 @@ class TermdashApp(App):
                 self.panels["io"].data = sample.io
             elif isinstance(sample, GitData):
                 self.panels["git"].data = sample
+            elif isinstance(sample, WeatherData):
+                self.panels["weather"].data = sample
+                poll.stale = sample.stale
+                poll.error = sample.error
             poll.last_success = monotonic()
         self.update_badges()
 
@@ -193,7 +223,10 @@ class TermdashApp(App):
         now = monotonic()
         for name, poll in self.polls.items():
             age = now - (poll.last_success if poll.last_success is not None else poll.started_at)
-            if poll.error:
+            if poll.stale:
+                badge = "STALE"
+                detail = f"Cached weather; refresh failed. {poll.error}"
+            elif poll.error:
                 badge = "ERROR"
                 detail = poll.error
             elif age > max(0.5, 2 * poll.interval):
@@ -203,7 +236,8 @@ class TermdashApp(App):
                 badge, detail = "LOADING", "Waiting for the first sample."
             else:
                 badge = "DEMO" if name == "demo" else "LIVE"
-                detail = "Simulated data." if name == "demo" else "Local data."
+                detail = ("Open-Meteo weather (15-minute cache)." if name == "weather" else
+                          "Simulated data." if name == "demo" else "Local data.")
             for panel_name in poll.panels:
                 panel = self.panels[panel_name]
                 panel.border_subtitle = Text(f"[{badge}]")
