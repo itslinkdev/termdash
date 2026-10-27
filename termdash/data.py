@@ -23,12 +23,18 @@ class WeatherData:
 
 @dataclass(frozen=True)
 class GitData:
-    branch: str = "demo/visual-layer"
-    ahead: int = 2
+    branch: str = ""
+    ahead: int = 0
     behind: int = 0
     files: tuple[tuple[str, str], ...] = ()
     additions: int = 0
     deletions: int = 0
+    staged: int = 0
+    unstaged: int = 0
+    untracked: int = 0
+    last_commit_subject: str = ""
+    last_commit_relative_time: str = ""
+    is_repo: bool = True
 
 
 @dataclass(frozen=True)
@@ -83,10 +89,17 @@ class DemoProvider:
                 wind_kmh=self.random.uniform(8, 14),
             ),
             git=GitData(
+                branch="demo/visual-layer",
+                ahead=2,
                 files=(("M", "termdash/app.py"), ("A", "termdash/styles.tcss"),
                        ("?", "docs/preview.svg")),
                 additions=84,
                 deletions=12,
+                staged=1,
+                unstaged=1,
+                untracked=1,
+                last_commit_subject="Update demo layout",
+                last_commit_relative_time="2 hours ago",
             ),
             io=IOData(self.download, self.upload),
         )

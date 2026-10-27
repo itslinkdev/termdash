@@ -45,6 +45,11 @@ Textual respects `NO_COLOR`; unset that environment variable to see the palettes
   counter deltas divided by monotonic elapsed time. The first network rate is
   zero while establishing a baseline. CPU measures a 0.1-second window.
   Live providers are not connected to the dashboard yet.
+- `termdash/providers/git.py`: local `git status --porcelain=v2 --branch -z`
+  parsing plus the last commit subject/relative time. Returns an empty state
+  outside a repository, handles detached/unborn HEAD, counts staged, unstaged
+  and all untracked files, and limits each Git subprocess to five seconds.
+  Ahead/behind compare the locally known upstream; no fetch is performed.
 - `termdash/panels/`: one widget class per file, each accepting a reactive `data`
   attribute. Assign a fresh matching data object to update a panel; widgets have
   no knowledge of the provider. A future provider can return the same `Snapshot`.
