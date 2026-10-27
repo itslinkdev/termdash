@@ -81,6 +81,7 @@ class TermdashApp(App):
         system_provider: Provider[SystemSnapshot] | None = None,
         git_provider: Provider[GitData] | None = None,
         system_interval: float = 2, git_interval: float = 5, demo_interval: float = 2,
+        theme: str = "dark",
     ) -> None:
         super().__init__()
         for interval in (system_interval, git_interval, demo_interval):
@@ -103,11 +104,14 @@ class TermdashApp(App):
                 git_interval, ("git",),
             )
         self.mode_label: Static | None = None
+        if theme not in self.THEMES:
+            raise ValueError("Unknown theme")
+        self.theme_name = theme
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="header"):
             yield Static("›_ termdash", id="title")
-            yield Static(f"{'DEMO' if self.demo_mode else 'LIVE'} / dark",
+            yield Static(f"{'DEMO' if self.demo_mode else 'LIVE'} / {self.theme_name}",
                          id="mode", classes="muted")
             yield Static(id="clock")
         with Grid(id="panels"):

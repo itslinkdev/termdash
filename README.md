@@ -26,7 +26,8 @@ delays (positive, finite seconds):
 .\.venv\Scripts\python.exe -m termdash --help
 ```
 
-`--repo` defaults to the current working directory. Defaults are 2 seconds for
+CLI flags override the TOML settings. `git.repo` defaults to the current working
+directory. Defaults are 2 seconds for
 system data, 5 seconds for Git, and 2 seconds for demo/weather data. Each delay
 starts after that provider's fetch finishes. Pressing `r` wakes waiting workers;
 an in-flight fetch finishes before the next fetch starts.
@@ -43,6 +44,37 @@ see the palettes. Styling is in `termdash/styles.tcss`.
 | `r` | Request refresh for every provider |
 | `?` | Open or close help |
 | `Esc` / `Enter` | Close help |
+
+## Configuration
+
+On first launch termdash writes a commented `config.toml` in your user config
+directory: `%APPDATA%/termdash` on Windows, `$XDG_CONFIG_HOME/termdash` (default
+`~/.config/termdash`) on Linux, or `~/Library/Application Support/termdash` on macOS.
+Use `--config PATH` to select another file. Invalid TOML, unknown keys, and invalid
+values produce an error naming the file and setting before the UI starts.
+
+```toml
+location = "London"
+units = "metric"
+theme = "dark"
+
+[refresh]
+system = 2
+git = 5
+weather = 900
+demo = 2
+
+[git]
+repo = "."
+```
+
+`location` is a city name of at least two characters. `units` accepts `metric`
+or `imperial`; both weather settings are reserved for the live weather provider.
+`theme` selects `dark`, `light`, or `retro` at startup. The `t` key changes the
+current session only. Every refresh value must be positive, finite seconds.
+`git.repo` accepts a path; `~` expands to your home and relative paths use the
+launch directory. Use forward slashes (`C:/src/project`) or TOML literal strings
+(`'C:\src\project'`) for Windows paths. Missing keys use the defaults above.
 
 ## Providers and panel states
 
@@ -80,6 +112,7 @@ delay. Hover a panel for the error and refresh details; `r` retries sooner.
 
 - `termdash/app.py`: composition, provider workers, result messages, badges, help.
 - `termdash/__main__.py`: CLI options and interval validation.
+- `termdash/config.py`, `paths.py`: validated TOML and per-user directories.
 - `termdash/data.py`: immutable panel dataclasses and demo provider.
 - `termdash/providers/`: protocol, psutil provider and Git provider.
 - `termdash/panels/`: reactive widgets accepting fresh matching data objects.
