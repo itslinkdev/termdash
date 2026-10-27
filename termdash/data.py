@@ -8,7 +8,7 @@ from random import Random
 class SystemData:
     cpu: tuple[float, ...] = ()
     memory: tuple[float, ...] = ()
-    memory_total_gib: float = 16.0
+    memory_total_gib: float = 0.0
     cpu_per_core: tuple[float, ...] = ()
 
 
@@ -42,8 +42,8 @@ class IOData:
     download_mbps: float = 0.0
     upload_mbps: float = 0.0
     capacity_mbps: float = 100.0
-    disk_used_gib: float = 148.0
-    disk_total_gib: float = 256.0
+    disk_used_gib: float = 0.0
+    disk_total_gib: float = 0.0
     download_bytes_per_second: float | None = None
     upload_bytes_per_second: float | None = None
 
@@ -82,7 +82,7 @@ class DemoProvider:
         self.upload = self._drift(self.upload, 2, 0, 24)
         # Git changes slowly, so keep the demo files stable between samples.
         return Snapshot(
-            system=SystemData(self.cpu, self.memory),
+            system=SystemData(self.cpu, self.memory, memory_total_gib=16.0),
             weather=WeatherData(
                 temperature_c=self.temperature,
                 humidity_percent=self.random.randint(58, 65),
@@ -101,7 +101,7 @@ class DemoProvider:
                 last_commit_subject="Update demo layout",
                 last_commit_relative_time="2 hours ago",
             ),
-            io=IOData(self.download, self.upload),
+            io=IOData(self.download, self.upload, disk_used_gib=148.0, disk_total_gib=256.0),
         )
 
     def snapshot(self) -> Snapshot:

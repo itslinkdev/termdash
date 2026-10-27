@@ -1,8 +1,9 @@
 # termdash
 
-A visual terminal dashboard for Python 3.11+ and Textual. **All readings are
-simulated**: the app never inspects your CPU, repository, disk, or network and
-never requests weather data.
+A terminal dashboard for Python 3.11+ and Textual. Live mode reads local CPU,
+memory, disk, network and Git data. `--demo` keeps all readings simulated.
+**Weather is always simulated**, including in live mode. No provider makes
+network requests or changes your repository.
 
 ## Run
 
@@ -11,56 +12,81 @@ From this folder, in PowerShell:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m termdash --demo
+.\.venv\Scripts\python.exe -m termdash
 ```
 
-With an activated environment, use `python -m termdash --demo`.
-Running without `--demo` prints usage; real providers are not implemented.
+Git must be installed and available on PATH. Choose a repository and polling
+delays (positive, finite seconds):
 
-The header shows the local clock. The 2×2 grid contains CPU/memory sparklines,
-weather, Git status, and network/disk bars. It fits 80×24 terminal cells and
-expands to 200×60. Sparklines show 48 samples, automatically scaled to their
-own range; network bars use a simulated 100 Mb/s link, and disk uses 256 GiB.
+```powershell
+.\.venv\Scripts\python.exe -m termdash --repo "D:\path\to\repo" --system-interval 1 --git-interval 5
+.\.venv\Scripts\python.exe -m termdash --demo --demo-interval 2
+.\.venv\Scripts\python.exe -m termdash --help
+```
+
+`--repo` defaults to the current working directory. Defaults are 2 seconds for
+system data, 5 seconds for Git, and 2 seconds for demo/weather data. Each delay
+starts after that provider's fetch finishes. Pressing `r` wakes waiting workers;
+an in-flight fetch finishes before the next fetch starts.
+
+The header shows the local clock and LIVE or DEMO mode. The 2×2 grid fits 80×24
+terminal cells and expands to 200×60. The terminal controls the font and must
+support Unicode border/chart glyphs. Textual respects `NO_COLOR`; unset it to
+see the palettes. Styling is in `termdash/styles.tcss`.
 
 | Key | Action |
 | --- | --- |
 | `q` | Quit |
-| `t` | Cycle dark → light → high-contrast retro green → dark |
-| `r` | Refresh demo values immediately |
+| `t` | Cycle dark → light → retro green → dark |
+| `r` | Request refresh for every provider |
 | `?` | Open or close help |
 | `Esc` / `Enter` | Close help |
 
-Values refresh every two seconds; the clock updates every second.
-All application styling and palette variables are in `termdash/styles.tcss`.
-The terminal controls the font and must support Unicode border/chart glyphs.
-Textual respects `NO_COLOR`; unset that environment variable to see the palettes.
+## Providers and panel states
+
+`Provider` is a `typing.Protocol` with `fetch()` returning an immutable
+dataclass. Widgets only consume data; fetching runs in independent Textual
+thread workers. Results reach the UI through thread-safe messages. Each
+provider has one worker, so refreshes cannot overlap that provider's fetches.
+
+- **SystemProvider** (`SystemSnapshot`): psutil per-core CPU measured over a
+  0.1-second window, memory percentage/total, usage of the current drive's root
+  filesystem, and aggregate network throughput. Bytes/s are counter deltas
+  divided by monotonic elapsed seconds. The first rate is zero while establishing
+  a baseline; missing/reset counters also restart at zero. The CPU chart shows
+  logical cores in live mode; memory retains up to 48 samples. Network bars use
+  an adaptive scale, not a measured link capacity. Charts scale to their own range.
+- **GitProvider** (`GitData`): runs `git status --porcelain=v2 --branch -z --untracked-files=all`
+  and reads the last commit's subject and relative time. Shows branch, ahead/behind,
+  staged/unstaged/untracked counts, and up to three file names as space permits.
+  A file can count as both staged and unstaged. Detached HEAD includes the short
+  commit ID; a new repository shows “No commits yet”. Non-repositories and missing
+  directories show a friendly empty state. Each Git command has a five-second
+  timeout. Ahead/behind reflect locally known upstream refs; the provider never
+  fetches from a remote.
+- **DemoProvider** (`Snapshot`): bounded simulated values, including weather.
+  Keeps the original `snapshot()` API as an alias for `fetch()`. In demo mode,
+  CPU/memory charts show 48 history samples and network bars use a 100 Mb/s scale.
+
+Panel border badges show `LOADING`, `LIVE`, `DEMO`, `STALE` or `ERROR`. A provider
+is stale after no successful sample for twice its interval (at least 0.5 seconds).
+Slow and failed providers retain the last successful data while the other workers
+and keyboard actions continue. Errors retry automatically after the configured
+delay. Hover a panel for the error and refresh details; `r` retries sooner.
 
 ## Structure
 
-- `termdash/app.py`: composition, clock, refresh, keyboard actions, help.
-- `termdash/data.py`: immutable panel data and random, bounded `DemoProvider`.
-- `termdash/providers/`: typed `Provider` protocol with `fetch()` returning a
-  dataclass, and `SystemProvider` using psutil. System samples include per-core
-  CPU, 48-sample CPU/memory histories, disk usage, and network bytes/s from
-  counter deltas divided by monotonic elapsed time. The first network rate is
-  zero while establishing a baseline. CPU measures a 0.1-second window.
-  Live providers are not connected to the dashboard yet.
-- `termdash/providers/git.py`: local `git status --porcelain=v2 --branch -z`
-  parsing plus the last commit subject/relative time. Returns an empty state
-  outside a repository, handles detached/unborn HEAD, counts staged, unstaged
-  and all untracked files, and limits each Git subprocess to five seconds.
-  Ahead/behind compare the locally known upstream; no fetch is performed.
-- `termdash/panels/`: one widget class per file, each accepting a reactive `data`
-  attribute. Assign a fresh matching data object to update a panel; widgets have
-  no knowledge of the provider. A future provider can return the same `Snapshot`.
-- `termdash/styles.tcss`: geometry, rounded borders, padding, all three themes.
-- `tests/test_app.py`: standard-library unittest with Textual Pilot.
-- `docs/termdash-retro.svg`: Pilot screenshot after pressing `t` twice at 80×24.
+- `termdash/app.py`: composition, provider workers, result messages, badges, help.
+- `termdash/__main__.py`: CLI options and interval validation.
+- `termdash/data.py`: immutable panel dataclasses and demo provider.
+- `termdash/providers/`: protocol, psutil provider and Git provider.
+- `termdash/panels/`: reactive widgets accepting fresh matching data objects.
+- `tests/`: pytest provider/CLI tests and Textual Pilot checks.
+- `docs/termdash-retro.svg`: example demo screenshot at 80×24.
 
 ## Build and test
 
-This source-only Python app has no separate bundling step. Compile-check it and
-run the tests (pytest and psutil are included in `requirements.txt`):
+This source-only Python app has no separate bundling step:
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q termdash tests
@@ -68,15 +94,22 @@ run the tests (pytest and psutil are included in `requirements.txt`):
 git diff --check
 ```
 
-The Pilot test boots the app, cycles themes twice, and rewrites the SVG in
-`docs/`. Additional checks cover theme wraparound, quit, help, refresh, reactive
-updates, simulated-value bounds, and panel geometry at 80×24, 120×36, and 200×60.
-Screenshot tests temporarily unset `NO_COLOR` so the SVG captures theme colors.
+Tests use fake psutil readings and `tmp_path` Git repositories for clean, dirty,
+ahead/behind, detached, unborn, renamed and conflicted states. Pilot checks cover
+themes, help, keyboard refresh/quit, layout, worker thread identity, independent
+intervals, blocked providers, stale/error badges, retained data and recovery.
+The screenshot test writes to a temporary directory and leaves tracked files
+unchanged. No pytest async plugin is required.
 
 ## Limits
 
-Demo data only; no live integrations or theme persistence. Layouts smaller than
-80×24 are not supported. Real-provider error/loading states are not implemented.
-SVG snapshots contain the current clock, so regenerating them changes the file.
+Weather remains demo data. No theme persistence or layouts below 80×24. Long
+Git subjects are truncated to fit (hover for the full subject); the file list is
+a preview, while counts include every file. CPU is a short-window measurement,
+and network rates aggregate interfaces rather than representing one adapter.
+Git status and log are separate reads, so a concurrent commit can briefly mix
+samples. Python cannot forcibly cancel an in-flight thread; quit cancels polling
+and wakes idle workers, but process exit may wait for an active system call to
+return (Git commands are bounded by their timeout).
 
 MIT licensed. Copyright holder: TODO.

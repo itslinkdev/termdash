@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import unittest
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from xml.etree import ElementTree
 
@@ -12,9 +13,6 @@ from termdash.panels.git import GitPanel
 from termdash.panels.io import IOPanel
 from termdash.panels.system import SystemPanel
 from termdash.panels.weather import WeatherPanel
-
-
-DOCS = Path(__file__).resolve().parents[1] / "docs"
 
 
 class DashboardTests(unittest.IsolatedAsyncioTestCase):
@@ -37,8 +35,9 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("t")
             self.assertEqual(app.theme_name, "retro")
             self.assertTrue(app.screen.has_class("retro"))
-            DOCS.mkdir(exist_ok=True)
-            path = app.save_screenshot("termdash-retro.svg", path=str(DOCS))
+            directory = TemporaryDirectory()
+            self.addCleanup(directory.cleanup)
+            path = app.save_screenshot("termdash-retro.svg", path=directory.name)
             screenshot = Path(path)
             svg = screenshot.read_text(encoding="utf-8")
             # Rich exports a whitespace-only line; keep generated diffs clean.

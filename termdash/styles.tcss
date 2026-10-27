@@ -51,16 +51,20 @@ Screen.retro { background: $retro-ground; color: $retro-ink; }
     border: round $dark-line;
     border-title-color: $dark-ink;
     border-title-style: bold;
+    border-subtitle-color: $dark-ink;
+    border-subtitle-style: bold;
 }
 .light .panel, .light #help-box {
     background: $light-surface;
     border: round $light-line;
     border-title-color: $light-ink;
+    border-subtitle-color: $light-ink;
 }
 .retro .panel, .retro #help-box {
     background: $retro-surface;
     border: round $retro-line;
     border-title-color: $retro-ink;
+    border-subtitle-color: $retro-ink;
 }
 Static { height: 1; }
 .metric { text-style: bold; }
@@ -81,7 +85,7 @@ Sparkline > .sparkline--min-color, Sparkline > .sparkline--max-color {
     color: $retro-data;
 }
 
-#git-files { height: 1fr; min-height: 3; }
+#git-files { height: 1fr; min-height: 1; }
 ProgressBar, Bar { width: 1fr; height: 1; }
 Bar > .bar--bar, Bar > .bar--complete {
     color: $dark-data;

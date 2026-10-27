@@ -15,7 +15,7 @@ class SystemPanel(Widget):
         yield Sparkline(id="cpu-spark")
         yield Static("Memory", id="memory-label", classes="metric")
         yield Sparkline(id="memory-spark")
-        yield Static("48 samples / 2s / auto scale", classes="muted")
+        yield Static("Waiting for readings", id="system-scale", classes="muted")
 
     def watch_data(self, data: SystemData) -> None:
         if not self.is_mounted:
@@ -27,5 +27,9 @@ class SystemPanel(Widget):
         self.query_one("#memory-label", Static).update(
             f"Memory     {memory:5.1f}% / {used:.1f} GiB"
         )
-        self.query_one("#cpu-spark", Sparkline).data = data.cpu
+        self.query_one("#cpu-spark", Sparkline).data = data.cpu_per_core or data.cpu
         self.query_one("#memory-spark", Sparkline).data = data.memory
+        self.query_one("#system-scale", Static).update(
+            f"{len(data.cpu_per_core)} cores / memory history" if data.cpu_per_core
+            else f"{len(data.cpu)} samples / auto scale"
+        )

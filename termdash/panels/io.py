@@ -30,9 +30,20 @@ class IOPanel(Widget):
             ("disk", f"Disk   {data.disk_used_gib:.0f} / {data.disk_total_gib:.0f} GiB",
              data.disk_used_gib, data.disk_total_gib),
         )
+        if data.download_bytes_per_second is not None:
+            capacity = data.capacity_mbps * 1_000_000 / 8
+            metrics = (
+                ("download", f"Down   {data.download_bytes_per_second:.0f} B/s",
+                 data.download_bytes_per_second, capacity),
+                ("upload", f"Up     {data.upload_bytes_per_second:.0f} B/s",
+                 data.upload_bytes_per_second or 0.0, capacity),
+                metrics[2],
+            )
         for name, label, used, total in metrics:
             self.query_one(f"#{name}-label", Static).update(label)
             self.query_one(f"#{name}-bar", ProgressBar).update(total=total, progress=used)
         self.query_one("#io-scale", Static).update(
-            f"Link scale / {data.capacity_mbps:.0f} Mb/s"
+            f"Scale / {data.capacity_mbps * 1_000_000 / 8:.0f} B/s"
+            if data.download_bytes_per_second is not None
+            else f"Link scale / {data.capacity_mbps:.0f} Mb/s"
         )
