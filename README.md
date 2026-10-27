@@ -1,33 +1,67 @@
 # termdash
 
-A terminal dashboard for Python 3.11+ and Textual. Live mode reads local CPU,
-memory, disk, network and Git data, plus current weather from Open-Meteo.
-`--demo` keeps all readings simulated and makes no weather requests.
-Providers never change your Git repository. No weather API key is needed.
+**Your machine, your repository, and the weather — in one terminal.**
+
+[![CI](https://github.com/itslinkdev/termdash/actions/workflows/ci.yml/badge.svg)](https://github.com/itslinkdev/termdash/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+termdash is a keyboard-driven terminal dashboard built with Python and Textual.
+Keep an eye on CPU, memory, disk usage, network throughput, Git status, and
+current weather without leaving your terminal. Independent provider workers keep
+the interface responsive while data refreshes in the background.
+
+![termdash demo in the retro green theme](docs/termdash-retro.svg)
+
+*Demo screenshot at 80×24. Values shown are simulated.*
 
 GIF preview: TODO (record a short terminal session).
 
+## Features
+
+- **System at a glance:** per-core CPU, memory history, disk usage, and network rates.
+- **Read-only Git status:** branch, ahead/behind, changed files, and the latest commit.
+- **Weather without an API key:** Open-Meteo geocoding and current conditions,
+  retry backoff, and a persistent 15-minute cache with stale fallback.
+- **Three palettes:** dark, light, and retro green, switched with one key.
+- **Plain TOML configuration:** commented defaults created on first launch,
+  validated settings, and CLI overrides.
+- **Offline demo:** `--demo` simulates every panel without weather requests.
+
+Providers never modify your Git repository. Live weather contacts Open-Meteo;
+system and Git readings stay local.
+
 ## Install and run
 
-From this folder, in PowerShell:
+You need **Python 3.11+**, **Git on PATH**, and a terminal of at least **80×24**
+with Unicode support. Install from source; this project is not published to PyPI.
+
+### Windows (PowerShell)
 
 ```powershell
+git clone https://github.com/itslinkdev/termdash.git
+cd termdash
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pip install .
 .\.venv\Scripts\termdash.exe
 ```
 
-On Linux/macOS:
+### Linux / macOS
 
 ```sh
+git clone https://github.com/itslinkdev/termdash.git
+cd termdash
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install .
 termdash
 ```
 
-For a regular install from this checkout, use `python -m pip install .` instead.
-Python 3.11+ is required for the standard library's `tomllib`.
+For development, use `python -m pip install -e ".[dev]"` instead. The `termdash`
+console script and `python -m termdash` launch the same app. No API keys or
+environment secrets are required.
+
+### Try it
 
 Git must be installed and available on PATH. Choose a repository and polling
 delays (positive, finite seconds):
@@ -39,8 +73,8 @@ delays (positive, finite seconds):
 ```
 
 CLI flags override the TOML settings. `git.repo` defaults to the current working
-directory. Defaults are 2 seconds for
-system data, 5 seconds for Git, 900 seconds for weather, and 2 seconds for demo data. Each delay
+directory. Defaults are 2 seconds for system data, 5 seconds for Git, 900 seconds
+for weather, and 2 seconds for demo data. Each delay
 starts after that provider's fetch finishes. Pressing `r` wakes waiting workers;
 an in-flight fetch finishes before the next fetch starts. Weather refreshes,
 including `r` and `--weather-interval`, respect the 15-minute cache TTL.
@@ -182,9 +216,8 @@ SystemProvider        GitProvider       WeatherProvider      DemoProvider
 
 ## Build and test
 
-Install from the checkout with `python -m pip install .`; the `termdash` console
-script and `python -m termdash` both start the app. For development, use the
-editable install above. On Linux, activate `.venv/bin/activate` and use `python`
+Install the development tools with `python -m pip install -e ".[dev]"`.
+On Linux/macOS, activate `.venv/bin/activate` and use `python`
 and `termdash` without the Windows paths.
 
 Build a wheel and run checks:
