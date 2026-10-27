@@ -66,7 +66,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         app = TermdashApp(system_provider=system, git_provider=git,
                           system_interval=0.05, git_interval=0.05)
         try:
-            async with app.run_test(size=(80, 24)) as pilot:
+            async with app.run_test(size=(80, 24)):
                 await wait_until(lambda: app.polls["git"].last_success is not None)
                 previous = app.panels["git"].data
                 git.gate.clear()
@@ -103,7 +103,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         system, git = FakeSystem(), FakeGit()
         app = TermdashApp(system_provider=system, git_provider=git,
                           system_interval=0.05, git_interval=0.03)
-        async with app.run_test() as pilot:
+        async with app.run_test():
             await wait_until(lambda: all(p.last_success is not None for p in app.polls.values()))
             git.fail = system.fail = True
             await wait_until(lambda: app.polls["git"].error and app.polls["system"].error)

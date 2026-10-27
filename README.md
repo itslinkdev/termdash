@@ -5,14 +5,16 @@ memory, disk, network and Git data. `--demo` keeps all readings simulated.
 **Weather is always simulated**, including in live mode. No provider makes
 network requests or changes your repository.
 
+GIF preview: TODO (record a short terminal session).
+
 ## Run
 
 From this folder, in PowerShell:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m termdash
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\termdash.exe
 ```
 
 Git must be installed and available on PATH. Choose a repository and polling
@@ -86,10 +88,17 @@ delay. Hover a panel for the error and refresh details; `r` retries sooner.
 
 ## Build and test
 
-This source-only Python app has no separate bundling step:
+Install from the checkout with `python -m pip install .`; the `termdash` console
+script and `python -m termdash` both start the app. For development, use the
+editable install above. On Linux, activate `.venv/bin/activate` and use `python`
+and `termdash` without the Windows paths.
+
+Build a wheel and run checks:
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q termdash tests
+.\.venv\Scripts\python.exe -m pip wheel . --no-deps --wheel-dir dist
+.\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest -q
 git diff --check
 ```
@@ -100,6 +109,14 @@ themes, help, keyboard refresh/quit, layout, worker thread identity, independent
 intervals, blocked providers, stale/error badges, retained data and recovery.
 The screenshot test writes to a temporary directory and leaves tracked files
 unchanged. No pytest async plugin is required.
+
+GitHub Actions runs ruff, pytest, a wheel build, and an installed console-script
+smoke check on Linux and Windows with Python 3.11, 3.12, and 3.13. The wheel
+includes the dashboard stylesheet and MIT license.
+
+## What I learned
+
+TODO
 
 ## Limits
 
