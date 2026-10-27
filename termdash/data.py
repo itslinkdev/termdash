@@ -1,4 +1,4 @@
-"""Panel values and simulated snapshots; no machine or network access."""
+"""Immutable panel values shared by live and demo providers."""
 
 from dataclasses import dataclass
 from random import Random
@@ -9,6 +9,7 @@ class SystemData:
     cpu: tuple[float, ...] = ()
     memory: tuple[float, ...] = ()
     memory_total_gib: float = 16.0
+    cpu_per_core: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,14 @@ class IOData:
     capacity_mbps: float = 100.0
     disk_used_gib: float = 148.0
     disk_total_gib: float = 256.0
+    download_bytes_per_second: float | None = None
+    upload_bytes_per_second: float | None = None
+
+
+@dataclass(frozen=True)
+class SystemSnapshot:
+    system: SystemData
+    io: IOData
 
 
 @dataclass(frozen=True)
@@ -59,7 +68,7 @@ class DemoProvider:
     def _drift(self, value: float, step: float, low: float, high: float) -> float:
         return round(max(low, min(high, value + self.random.uniform(-step, step))), 1)
 
-    def snapshot(self) -> Snapshot:
+    def fetch(self) -> Snapshot:
         self.cpu = (*self.cpu[1:], self._drift(self.cpu[-1], 9, 4, 96))
         self.memory = (*self.memory[1:], self._drift(self.memory[-1], 0.4, 30, 85))
         self.temperature = self._drift(self.temperature, 0.1, 17, 22)
@@ -81,3 +90,7 @@ class DemoProvider:
             ),
             io=IOData(self.download, self.upload),
         )
+
+    def snapshot(self) -> Snapshot:
+        """Keep the original demo API for callers using it directly."""
+        return self.fetch()

@@ -39,6 +39,12 @@ Textual respects `NO_COLOR`; unset that environment variable to see the palettes
 
 - `termdash/app.py`: composition, clock, refresh, keyboard actions, help.
 - `termdash/data.py`: immutable panel data and random, bounded `DemoProvider`.
+- `termdash/providers/`: typed `Provider` protocol with `fetch()` returning a
+  dataclass, and `SystemProvider` using psutil. System samples include per-core
+  CPU, 48-sample CPU/memory histories, disk usage, and network bytes/s from
+  counter deltas divided by monotonic elapsed time. The first network rate is
+  zero while establishing a baseline. CPU measures a 0.1-second window.
+  Live providers are not connected to the dashboard yet.
 - `termdash/panels/`: one widget class per file, each accepting a reactive `data`
   attribute. Assign a fresh matching data object to update a panel; widgets have
   no knowledge of the provider. A future provider can return the same `Snapshot`.
@@ -49,11 +55,11 @@ Textual respects `NO_COLOR`; unset that environment variable to see the palettes
 ## Build and test
 
 This source-only Python app has no separate bundling step. Compile-check it and
-run the tests without installing any additional testing dependencies:
+run the tests (pytest and psutil are included in `requirements.txt`):
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q termdash tests
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pytest -q
 git diff --check
 ```
 

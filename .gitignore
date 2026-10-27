@@ -3,3 +3,4 @@ __pycache__/
 *.py[cod]
 .taste-skill/
 AGENTS.md
+.pytest_cache/
